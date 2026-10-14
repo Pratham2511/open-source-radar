@@ -232,6 +232,13 @@
 
     const comments = node.querySelector(".comments");
     comments.textContent = issue.comments === 1 ? "1 comment" : `${issue.comments} comments`;
+    if (issue.maintainer_replied === true) {
+      const reply = document.createElement("span");
+      reply.className = "comments";
+      reply.textContent = "Maintainer replied";
+      reply.title = "The latest fetched comment is from a repository owner, member or collaborator.";
+      comments.after(reply);
+    }
 
     const badges = node.querySelector(".badges");
     const policy = repo.policy || {};

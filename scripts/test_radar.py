@@ -130,6 +130,37 @@ class LinkedPRStatesTests(unittest.TestCase):
         self.assertTrue(radar.issue_is_available(issue(timelineItems=timeline), SINCE))
 
 
+class MaintainerReplyTests(unittest.TestCase):
+    def test_owner_member_and_collaborator_comments_count_as_replies(self):
+        for association in ("OWNER", "MEMBER", "COLLABORATOR"):
+            with self.subTest(association=association):
+                nodes = [comment("Happy to help", authorAssociation=association)]
+                self.assertIs(radar.has_maintainer_reply(issue(comments={"nodes": nodes})), True)
+
+    def test_other_associations_do_not_count_as_replies(self):
+        for association in ("CONTRIBUTOR", "FIRST_TIMER", "FIRST_TIME_CONTRIBUTOR", "NONE", "owner", "", None):
+            with self.subTest(association=association):
+                nodes = [comment("Happy to help", authorAssociation=association, author={"login": "owner"})]
+                self.assertIs(radar.has_maintainer_reply(issue(comments={"nodes": nodes})), False)
+
+    def test_missing_null_and_empty_comments_return_false(self):
+        for item in (
+            {},
+            {"comments": None},
+            {"comments": {}},
+            {"comments": {"nodes": None}},
+            {"comments": {"nodes": []}},
+        ):
+            with self.subTest(issue=item):
+                self.assertIs(radar.has_maintainer_reply(item), False)
+
+    def test_missing_associations_and_null_nodes_are_skipped(self):
+        nodes = [None, {}, comment("No association"), comment("No association", authorAssociation=None)]
+        self.assertIs(radar.has_maintainer_reply(issue(comments={"nodes": nodes})), False)
+        nodes.insert(1, comment("Happy to help", authorAssociation="MEMBER"))
+        self.assertIs(radar.has_maintainer_reply(issue(comments={"nodes": nodes})), True)
+
+
 class AvailabilityTests(unittest.TestCase):
     def test_open_unassigned_recent_issue_is_available(self):
         self.assertTrue(radar.issue_is_available(issue(), SINCE))
@@ -535,6 +566,12 @@ class SafetyTests(unittest.TestCase):
 
 
 class QueryTests(unittest.TestCase):
+    def test_query_requests_association_without_fetching_more_comments(self):
+        for include_policy in (False, True):
+            with self.subTest(include_policy=include_policy):
+                query = radar.build_repo_query(["owner/repo"], ["good first issue"], 5, include_policy=include_policy)
+                self.assertIn("comments(last: 1) { totalCount nodes { createdAt body authorAssociation } }", query)
+
     def test_query_quotes_names_and_labels(self):
         query = radar.build_repo_query(['own"er/na"me'], ['good "first"'], 5, include_policy=True)
         self.assertIn('owner: "own\\"er"', query)
@@ -694,6 +731,69 @@ class ContributingFetchTests(unittest.TestCase):
                 self.assertEqual(site_data["repositories"]["owner/repo"]["contributing"], expected)
                 self.assertNotIn("contributing", site_data["issues"][0])
                 self.assertEqual("HEAD:CONTRIBUTING.md" in github.query, refresh)
+
+
+class MaintainerReplyFetchTests(unittest.TestCase):
+    def test_fetch_and_render_preserve_reply_booleans(self):
+        comments = [
+            {"totalCount": 1, "nodes": [comment("Happy to help", authorAssociation="OWNER")]},
+            {"totalCount": 1, "nodes": [comment("I can reproduce it", authorAssociation="NONE")]},
+            {"totalCount": 1, "nodes": [comment("No association")]},
+            {"totalCount": 0, "nodes": []},
+        ]
+        graph_issues = [
+            issue(
+                number=number,
+                title=f"Task {number}",
+                url=f"https://github.com/owner/repo/issues/{number}",
+                createdAt="2026-09-01T00:00:00Z",
+                labels={"nodes": [{"name": "good first issue"}]},
+                comments=nodes,
+            )
+            for number, nodes in enumerate(comments, start=1)
+        ]
+        graph_repo = {
+            "nameWithOwner": "owner/repo",
+            "url": "https://github.com/owner/repo",
+            "description": "A small fixture",
+            "stargazerCount": 10,
+            "forkCount": 1,
+            "pushedAt": "2026-10-12T00:00:00Z",
+            "primaryLanguage": {"name": "Python"},
+            "repositoryTopics": {"nodes": []},
+            "issues": {"nodes": graph_issues},
+        }
+
+        class FakeGitHub:
+            def graphql(self, query):
+                return {"data": {"r0": graph_repo, "rateLimit": {"remaining": 4000}}}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repos_path = root / "data" / "repos.json"
+            issues_path = root / "data" / "issues.json"
+            site_data_path = root / "site" / "data" / "issues.json"
+            radar.write_json(repos_path, {"repos": {"owner/repo": {"language": "Python"}}})
+            config = radar.load_config()
+            with (
+                patch.multiple(
+                    radar,
+                    ROOT=root,
+                    REPOS_PATH=repos_path,
+                    POLICY_PATH=root / "data" / "policies.json",
+                    ISSUES_PATH=issues_path,
+                    SITE_DATA_PATH=site_data_path,
+                ),
+                patch.object(radar, "now_utc", return_value=dt.datetime(2026, 10, 13, tzinfo=dt.UTC)),
+            ):
+                result = radar.fetch(FakeGitHub(), config, force=True)
+                radar.render(config)
+
+            for payload in (result, radar.read_json(issues_path, None), radar.read_json(site_data_path, None)):
+                self.assertEqual(
+                    [item["maintainer_replied"] for item in payload["issues"]],
+                    [True, False, False, False],
+                )
 
 
 class RenderSmokeTests(unittest.TestCase):

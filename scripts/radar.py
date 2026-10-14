@@ -269,7 +269,7 @@ def build_repo_query(repos: list[str], labels: list[str], per_repo: int, include
            filterBy: {{labels: {label_list}}}) {{
       nodes {{
         number title url createdAt updatedAt locked
-        comments(last: 1) {{ totalCount nodes {{ createdAt body }} }}
+        comments(last: 1) {{ totalCount nodes {{ createdAt body authorAssociation }} }}
         assignees {{ totalCount }}
         labels(first: 10) {{ nodes {{ name color }} }}
         timelineItems(itemTypes: [CONNECTED_EVENT, CROSS_REFERENCED_EVENT], last: 20) {{
@@ -312,6 +312,15 @@ CLAIM_PATTERN = re.compile(
     re.IGNORECASE,
 )
 QUOTED_REPLY = re.compile(r"^>.*$|\n\s*On .{0,120}wrote:.*", re.MULTILINE | re.DOTALL)
+
+
+def has_maintainer_reply(issue: dict[str, Any]) -> bool:
+    """True when a fetched comment is from an owner, member or collaborator.
+
+    The query fetches only the latest comment, so older replies can be missed.
+    """
+    nodes = (issue.get("comments") or {}).get("nodes") or []
+    return any(node and node.get("authorAssociation") in ("OWNER", "MEMBER", "COLLABORATOR") for node in nodes)
 
 
 def recently_claimed(issue: dict[str, Any], claimed_since: dt.datetime) -> bool:
@@ -488,6 +497,7 @@ def fetch(github: GitHub, config: dict[str, Any], *, force: bool = False) -> dic
                         "created": issue["createdAt"][:10],
                         "updated": issue["updatedAt"][:10],
                         "comments": issue["comments"]["totalCount"],
+                        "maintainer_replied": has_maintainer_reply(issue),
                         "closed_pr": "CLOSED" in linked_pr_states(issue),
                     }
                 )

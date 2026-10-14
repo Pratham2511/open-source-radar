@@ -46,11 +46,20 @@ It is refreshed twice a day. The same data, without the website extras, is commi
       "created": "2026-08-01",
       "updated": "2026-09-10",
       "comments": 2,
+      "maintainer_replied": true,                 // latest fetched comment is from an owner, member or collaborator
       "closed_pr": false                         // a pull request for it was closed without merging
     }
   ]
 }
 ```
+
+`issues[].maintainer_replied` is `true` when a fetched comment has GitHub's
+`authorAssociation` of `OWNER`, `MEMBER` or `COLLABORATOR`; otherwise it is `false`.
+The query currently fetches only the latest comment on each issue (`comments(last: 1)`),
+so a maintainer reply followed by someone else's comment can be missed. A `false`
+value does not mean a maintainer has never replied, and a `true` value does not
+guarantee a future response. Older datasets can omit the field. The site shows a
+**Maintainer replied** hint only when the value is `true`.
 
 `repositories[repo].contributing` is the first detected, nonempty contributing
 guide in the configured lookup order: `CONTRIBUTING.md`,
