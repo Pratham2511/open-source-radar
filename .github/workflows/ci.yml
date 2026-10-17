@@ -39,7 +39,8 @@ jobs:
           python-version: "3.12"
       - name: Ruff
         run: |
-          pip install ruff
+          # Bump Ruff intentionally and keep CONTRIBUTING.md in sync.
+          pip install ruff==0.17.1
           ruff check scripts
           ruff format --check scripts
       - name: Website script syntax

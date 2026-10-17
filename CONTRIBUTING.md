@@ -48,7 +48,7 @@ Maintainers who would rather not have their project listed can open an issue, an
 
    Small fixes (a typo, a broken link, a one-line bug) don't need an issue or a claim at all, just open the pull request.
 2. Fork the repository and create a branch.
-3. For pipeline changes, run the tests and linter: `python3 -m unittest discover scripts` (Python 3.11+) and `ruff check scripts && ruff format --check scripts`.
+3. For pipeline changes, install the same Ruff version as CI with `python3 -m pip install ruff==0.17.1`, then run the tests and linter: `python3 -m unittest discover scripts` (Python 3.11+) and `ruff check scripts && ruff format --check scripts`.
 4. To try the pipeline on a small scale: `GITHUB_TOKEN=$(gh auth token) python3 scripts/radar.py all --languages "Rust"`, then `python3 -m http.server -d site 8000`. Do not commit the generated data from a partial run.
 5. Keep pull requests focused on one change, and describe what changed and why in a few sentences. Put `Closes #123` in the description so the issue closes when it's merged.
 6. Draft pull requests are welcome if you want early feedback. Mark it ready for review when you're done.
